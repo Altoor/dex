@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "esp_check.h"
 #include "esp_event.h"
@@ -13,6 +14,7 @@
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -35,9 +37,9 @@ static bool s_wifi_started;
 static bool s_sta_connected;
 static bool s_ap_active;
 static bool s_has_credentials;
-static bool s_give_up;
 static volatile bool s_dns_run;
 static volatile int s_dns_sock = -1;
+static SemaphoreHandle_t s_dns_done;
 static int s_retry_count;
 
 static char s_ssid[33];
@@ -95,16 +97,9 @@ static void retry_cb(void *arg)
 {
     (void)arg;
 
-    if (s_give_up) {
-        s_give_up = false;
-        ESP_LOGW(TAG, "could not join \"%s\"; starting provisioning AP", s_ssid);
-        wifi_manager_enable_ap();
-        notify();
-        return;
-    }
-
-    if (s_has_credentials && !s_sta_connected) {
+    if (s_has_credentials && s_wifi_started && !s_sta_connected) {
         ESP_LOGI(TAG, "retrying connection to \"%s\"", s_ssid);
+        s_retry_count++;
         esp_wifi_connect();
     }
 }
@@ -162,12 +157,12 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
                 break;
             }
 
+            /* Fast retries first, then settle into a 2-minute poll so the
+             * radio stays cheap while the router is away. */
             if (s_retry_count < MAX_RETRIES) {
-                s_retry_count++;
-                schedule_retry(2000);
+                schedule_retry(5000);
             } else {
-                s_give_up = true;
-                schedule_retry(100);
+                schedule_retry(120000);
             }
             break;
         }
@@ -190,7 +185,6 @@ static void wifi_event_handler(void *arg, esp_event_base_t base, int32_t id, voi
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&event->ip_info.ip));
         s_sta_connected = true;
         s_retry_count = 0;
-        s_give_up = false;
         ESP_LOGI(TAG, "connected to \"%s\", IP %s", s_ssid, s_ip);
         notify();
     }
@@ -204,8 +198,7 @@ static void dns_task(void *arg)
     if (sock < 0) {
         ESP_LOGE(TAG, "captive DNS socket failed");
         s_dns_run = false;
-        vTaskDelete(NULL);
-        return;
+        goto done;
     }
 
     struct sockaddr_in addr = {
@@ -218,9 +211,15 @@ static void dns_task(void *arg)
         ESP_LOGE(TAG, "captive DNS bind failed");
         close(sock);
         s_dns_run = false;
-        vTaskDelete(NULL);
-        return;
+        goto done;
     }
+
+    /* Short receive timeout so stop_dns() is observed promptly. */
+    struct timeval tv = {
+        .tv_sec = 0,
+        .tv_usec = 500 * 1000,
+    };
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 
     s_dns_sock = sock;
     ESP_LOGI(TAG, "captive DNS listening on :53");
@@ -297,9 +296,17 @@ static void dns_task(void *arg)
         sendto(sock, response, (size_t)out_len, 0, (struct sockaddr *)&from, from_len);
     }
 
-    s_dns_sock = -1;
+    /* Only clear the shared handle if a newer task has not replaced it. */
+    if (s_dns_sock == sock) {
+        s_dns_sock = -1;
+    }
     close(sock);
     ESP_LOGI(TAG, "captive DNS stopped");
+
+done:
+    if (s_dns_done) {
+        xSemaphoreGive(s_dns_done);
+    }
     vTaskDelete(NULL);
 }
 
@@ -309,6 +316,12 @@ static void start_dns(void)
         return;
     }
     s_dns_run = true;
+
+    /* Clear any completion token left by a previous task. */
+    if (s_dns_done) {
+        xSemaphoreTake(s_dns_done, 0);
+    }
+
     if (xTaskCreate(dns_task, "captive_dns", 4096, NULL, 3, NULL) != pdPASS) {
         ESP_LOGE(TAG, "could not start captive DNS task");
         s_dns_run = false;
@@ -322,10 +335,16 @@ static void stop_dns(void)
     }
     s_dns_run = false;
 
-    /* Unblock recvfrom() from this task; dns_task closes the descriptor. */
+    /* Unblock recvfrom() now; the task closes its descriptor. */
     if (s_dns_sock >= 0) {
         shutdown(s_dns_sock, SHUT_RDWR);
     }
+
+    /* Wait for the task to leave before a new one can bind port 53. */
+    if (s_dns_done) {
+        xSemaphoreTake(s_dns_done, pdMS_TO_TICKS(2000));
+    }
+    s_dns_sock = -1;
 }
 
 esp_err_t wifi_manager_enable_ap(void)
@@ -421,6 +440,9 @@ esp_err_t wifi_manager_init(void)
         .name = "wifi_retry",
     };
     ESP_RETURN_ON_ERROR(esp_timer_create(&timer_args, &s_retry_timer), TAG, "retry timer");
+
+    s_dns_done = xSemaphoreCreateBinary();
+    ESP_RETURN_ON_FALSE(s_dns_done != NULL, ESP_ERR_NO_MEM, TAG, "DNS semaphore");
 
     s_has_credentials = load_credentials();
 

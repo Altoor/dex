@@ -29,9 +29,24 @@ void gfx_fill_rect(gfx_canvas_t *canvas, int x, int y, int w, int h, gfx_color_t
 void gfx_draw_rect(gfx_canvas_t *canvas, int x, int y, int w, int h, gfx_color_t color);
 void gfx_fill_circle(gfx_canvas_t *canvas, int cx, int cy, int radius, gfx_color_t color);
 void gfx_draw_gear(gfx_canvas_t *canvas, int cx, int cy, int radius, gfx_color_t color);
+void gfx_draw_line(gfx_canvas_t *canvas, int x0, int y0, int x1, int y1,
+                   gfx_color_t color);
 
 int gfx_text_width(const char *text, int scale);
 void gfx_draw_text(gfx_canvas_t *canvas, int x, int y, const char *text, int scale,
                    gfx_color_t color);
 void gfx_draw_text_centered(gfx_canvas_t *canvas, int y, const char *text, int scale,
                             gfx_color_t color);
+
+/* Word-wrapped text; returns the number of lines drawn (at most max_lines). */
+int gfx_draw_text_wrapped(gfx_canvas_t *canvas, int x, int y, int max_width,
+                          const char *text, int scale, int max_lines,
+                          gfx_color_t color);
+
+/* Small static UI glyphs. */
+void gfx_draw_hourglass(gfx_canvas_t *canvas, int x, int y, int w, int h,
+                        gfx_color_t color);
+void gfx_draw_battery(gfx_canvas_t *canvas, int x, int y, int percent,
+                      bool charging, gfx_color_t color);
+void gfx_draw_checkbox(gfx_canvas_t *canvas, int x, int y, int size, bool checked,
+                       gfx_color_t color);

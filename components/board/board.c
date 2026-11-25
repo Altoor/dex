@@ -80,8 +80,8 @@ void board_power_off(void)
     gpio_set_level(BOARD_VBAT_PIN_PWR, 0);
 
     /* On USB the rail stays up, so park in deep sleep and wake on PWR. */
-    esp_deep_sleep_enable_gpio_wakeup(1ULL << BOARD_BUTTON_PWR_PIN,
-                                      ESP_GPIO_WAKEUP_GPIO_LOW);
+    esp_sleep_enable_ext1_wakeup_io(1ULL << BOARD_BUTTON_PWR_PIN,
+                                    ESP_EXT1_WAKEUP_ANY_LOW);
     esp_deep_sleep_start();
 }
 

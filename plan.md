@@ -322,9 +322,11 @@ The page is only reachable while the QR screen is up, as requested.
 - `main/idf_component.yml`: `espressif/esp_codec_dev: "^1.3.4"`.
 - `sdkconfig.defaults` additions:
   - `CONFIG_FATFS_LFN_HEAP=y`, `CONFIG_FATFS_MAX_LFN=255`
-  - `CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTP=y` (default) and a larger TX buffer
-  - `CONFIG_PM_ENABLE=y` (DFS only)
-  - `CONFIG_FREERTOS_HZ=1000` (fine-grained recording/timers)
+  - `CONFIG_PM_ENABLE=y` (DFS only; light sleep stays off)
+  - `CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y` for user-supplied HTTPS servers
+  - `CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y`
+- Tick rate stays at the IDF default (100 Hz); recording and debounce use
+  millisecond timers, so no finer tick is needed.
 - Keep the 4 MB flash layout and 2.9 MB app partition. Recordings live on SD,
   not flash.
 - `components/*/CMakeLists.txt` updated with new requirements.
@@ -344,18 +346,21 @@ The page is only reachable while the QR screen is up, as requested.
 
 ## 14. Validation checklist
 
-1. Builds for `esp32s3` with no warnings.
-2. Boot with no config: home shows "configure me"; no AP/server until QR.
+1. Builds for `esp32s3` with no warnings. **Verified.**
+2. Boot with no config: home shows "Not configured"; no AP/server until QR.
 3. Double-click PWR opens QR; AP + server appear; page loads; closing stops both.
 4. Save server/key/dynamic API; settings survive reboot.
 5. Online: home shows the next todo; checkmark PATCHes after 3 s; undo cancels.
 6. BOOT records; second BOOT posts multipart; hourglass appears/disappears.
-7. Result appears on the web status section.
+7. Result appears on the web status section (immediately as `accepted`, then the
+   terminal status/result after polling).
 8. Offline: record 2–3 notes; reconnect; they upload in order and files vanish.
 9. PWR single click runs checks and redraws only after the API result.
 10. PWR long press powers off; holding it again boots and refreshes.
 11. Battery % on the web page; top-row icon while USB/charging.
 12. Both buttons 15 s still factory-reset.
+
+Items 2–12 require the board and are not exercisable in this environment.
 
 ## 15. Risks / out of scope
 

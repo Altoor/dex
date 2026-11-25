@@ -2,23 +2,35 @@
 
 Firmware for the **Waveshare ESP32-S3-ePaper-1.54** (V1 and V2).
 
-The first milestone renders a clean home screen, exposes a settings screen from
-the PWR button, and lets a phone configure Wi-Fi through a QR code and a
-locally-hosted web page.
+The firmware is an always-on companion for the **Rolodex** backend: it shows the
+next todo on a 200 × 200 e-paper screen, records voice notes with the BOOT
+button, posts them to a configurable dynamic API, and queues everything while
+offline. Power and e-paper refreshes are treated as scarce resources.
 
 ## What it does
 
-- 200 × 200 e-paper home screen with **hello world** and a gear icon.
-- Short press **PWR** (or **BOOT**) toggles the settings screen; tapping the
-  gear on the touch panel does the same.
-- Settings screen shows a QR code for the device's settings page.
-- With no saved Wi-Fi, the device hosts an open **`dex-XXXX`** SoftAP with a
-  captive portal at **http://192.168.4.1/**.
-- The settings page scans nearby networks, saves credentials to NVS, and
-  reboots the device onto the selected network.
-- Once connected, the QR code points at the device's LAN IP instead.
-- Hold **BOOT + PWR for 15 seconds** to erase all settings and reboot into
-  setup mode.
+- Home screen shows the next open todo from `GET /api/v1/todos`, with a
+  checkmark that marks it done (debounced, with a short undo window).
+- **BOOT** tap starts a voice recording (max 60 s); another tap stops it and
+  uploads it. **PWR** cancels a recording.
+- Recordings are queued and sent in the order they were made. Uploading the next
+  recording does not wait for the previous request to finish processing.
+- Recordings are written to **microSD** first so they survive power loss; without
+  a card they fall back to RAM (roughly 12 s of audio).
+- Files are deleted from the card/RAM once the upload has been accepted.
+- **PWR** single click runs all checks (API first), then redraws. **PWR** double
+  click toggles the QR/settings screen. Touch: gear opens/closes settings, the
+  checkmark on the home screen completes the todo.
+- Settings page configures server URL, standard API key, dynamic API name,
+  dynamic API key, and the `state` string sent with each recording. It also
+  shows device status, battery, queue length, and the last dynamic API result.
+- The SoftAP, captive DNS and settings HTTP server run **only** while the
+  QR/settings screen is visible.
+- Battery indicator in the top row while charging; battery voltage/percentage
+  always shown on the settings page.
+- Hold **PWR for 3 s** to power off; hold it again while off to power on
+  (on battery the power latch cuts the board completely).
+- Hold **BOOT + PWR for 15 seconds** to erase all settings and reboot.
 
 See [plan.md](plan.md) for the design and roadmap.
 
@@ -28,6 +40,9 @@ Waveshare ESP32-S3-Touch-ePaper-1.54 (the firmware also works on the non-touch
 variant and disables touch when the FT6336 does not answer). The firmware does
 not need PSRAM and uses a 4 MB flash layout, so the same binary works on V1 and
 V2 boards.
+
+A **microSD card (FAT32)** is recommended: it makes the recording queue durable
+across resets and power loss, and holds the full 60-second recordings.
 
 | Signal | GPIO |
 | --- | --- |
@@ -40,10 +55,15 @@ V2 boards.
 | EPD_MOSI | 13 |
 | PWR button | 18 |
 | BOOT button | 0 |
-| Touch SDA | 47 |
-| Touch SCL | 48 |
-| Touch RST | 7 |
-| Touch INT | 21 |
+| Touch SDA / SCL | 47 / 48 |
+| Touch RST / INT | 7 / 21 |
+| Codec I²C (ES8311) | 0x18 on SDA 47 / SCL 48 |
+| I²S MCLK / BCLK / WS / DIN | 14 / 15 / 38 / 16 |
+| Audio power / PA | 42 (active low) / 46 |
+| microSD CLK / CMD / D0 | 39 / 41 / 40 (1-bit SDMMC) |
+| Battery ADC | 4 (200K/200K divider) |
+| Power latch | 17 (held high) |
+
 
 ## Build
 
@@ -77,33 +97,47 @@ sudo apt install libusb-1.0-0   # Debian/Ubuntu
 
 ## Using the device
 
-1. Power on. The screen shows `hello` / `world` and a gear.
-2. Short-press **PWR** (or tap the gear) to open the settings screen with a QR
+1. Power on. The screen shows the next todo, or a setup hint if the device has
+   no Rolodex settings yet.
+2. Double-click **PWR** (or tap the gear) to open the settings screen with a QR
    code.
 3. If the device has no Wi-Fi yet, join the open **`dex-XXXX`** network shown on
    the screen. The captive portal usually opens the settings page; otherwise
    scan the QR code or browse to **http://192.168.4.1/**.
-4. Pick a network, enter the password, and tap **Connect**.
-5. The device reboots, joins the network, and shows the SSID and IP on the home
-   screen.
-6. Later, press **PWR** and scan the QR code while on the same LAN to reopen
-   settings. Use **Forget network** to return to AP mode.
-7. To wipe everything, hold **BOOT + PWR together for 15 seconds**. The screen
-   shows a factory-reset message and the device reboots into AP mode.
+4. Pick a network, enter the password, and tap **Connect**. The device reboots
+   and joins the network.
+5. On the same settings page, fill in the **Rolodex** section: server URL (for
+   example `http://192.168.1.40:4000`), standard API key, dynamic API name
+   (slug), dynamic API key, and the state string. Save.
+6. Close the settings screen (double-click **PWR**). The device fetches the next
+   todo and shows it on the home screen.
+7. Tap **BOOT** to record, tap it again to stop and upload. Tap the checkmark to
+   complete the current todo; you have about three seconds to tap again and
+   undo before the update is sent.
+8. Single-click **PWR** to run a manual refresh (drains the queue, polls pending
+   statuses, then re-fetches the todo before redrawing).
+9. To wipe everything, hold **BOOT + PWR together for 15 seconds**. The screen
+   shows a factory-reset message and the device reboots.
 
 ## Repository layout
 
 | Path | Purpose |
 | --- | --- |
 | `main/` | Application entry point and boot order |
-| `components/board/` | Pins, power rails, debounced button task |
+| `components/board/` | Pins, power rails/latch, button gestures |
 | `components/epaper/` | SSD1681 SPI driver and refresh LUT |
-| `components/gfx/` | 1-bpp canvas, 5×7 text, shapes, gear, QR drawing |
+| `components/gfx/` | 1-bpp canvas, text, shapes, QR, hourglass, battery |
 | `components/touch_panel/` | FT6336 I²C touch controller |
+| `components/i2c_bus/` | Shared I²C master bus (touch + codec) |
+| `components/storage/` | microSD mount (optional, 1-bit SDMMC) |
+| `components/battery/` | Battery ADC and charging/USB detection |
+| `components/recorder/` | ES8311 + I²S capture, WAV, queue (SD first, RAM fallback) |
+| `components/app_config/` | NVS settings and last API result |
+| `components/net_client/` | Todos, PATCH, multipart upload, status polling |
 | `components/qrcodegen/` | Nayuki QR Code generator (MIT) |
 | `components/wifi_manager/` | NVS credentials, STA/AP, scan, captive DNS |
 | `components/web_server/` | HTTP API and embedded mobile settings page |
-| `components/ui/` | Screen state machine and rendering |
+| `components/ui/` | Screen state machine, debounce, power/QR lifecycle |
 
 ## Licenses
 

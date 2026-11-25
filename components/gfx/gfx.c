@@ -1,6 +1,7 @@
 #include "gfx.h"
 
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "font5x7.h"
@@ -140,4 +141,167 @@ void gfx_draw_text_centered(gfx_canvas_t *canvas, int y, const char *text, int s
 {
     int width = gfx_text_width(text, scale);
     gfx_draw_text(canvas, (canvas->width - width) / 2, y, text, scale, color);
+}
+
+void gfx_draw_line(gfx_canvas_t *canvas, int x0, int y0, int x1, int y1,
+                   gfx_color_t color)
+{
+    int dx = abs(x1 - x0);
+    int sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0);
+    int sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy;
+
+    for (;;) {
+        gfx_set_pixel(canvas, x0, y0, color);
+        if (x0 == x1 && y0 == y1) {
+            break;
+        }
+        int e2 = 2 * err;
+        if (e2 >= dy) {
+            err += dy;
+            x0 += sx;
+        }
+        if (e2 <= dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+int gfx_draw_text_wrapped(gfx_canvas_t *canvas, int x, int y, int max_width,
+                          const char *text, int scale, int max_lines,
+                          gfx_color_t color)
+{
+    if (canvas == NULL || text == NULL || scale < 1 || max_lines <= 0 ||
+        max_width <= 0) {
+        return 0;
+    }
+
+    int advance = FONT_ADVANCE * scale;
+    int max_chars = max_width / advance;
+    if (max_chars < 1) {
+        max_chars = 1;
+    }
+
+    char line[160];
+    const char *p = text;
+    int lines = 0;
+
+    while (*p != '\0' && lines < max_lines) {
+        while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') {
+            p++;
+        }
+        if (*p == '\0') {
+            break;
+        }
+
+        int len = (int)strlen(p);
+        int take = len < max_chars ? len : max_chars;
+
+        if (take < len) {
+            int cut = take;
+            while (cut > 0 && p[cut - 1] != ' ') {
+                cut--;
+            }
+            if (cut > 0) {
+                take = cut - 1;
+            }
+        }
+        if (take <= 0) {
+            take = 1;
+        }
+        if (take > (int)sizeof(line) - 1) {
+            take = (int)sizeof(line) - 1;
+        }
+
+        memcpy(line, p, (size_t)take);
+        line[take] = '\0';
+        while (take > 0 && line[take - 1] == ' ') {
+            line[--take] = '\0';
+        }
+
+        gfx_draw_text(canvas, x, y, line, scale, color);
+        y += FONT_HEIGHT * scale + 3 * scale;
+        p += take;
+        lines++;
+    }
+
+    return lines;
+}
+
+void gfx_draw_hourglass(gfx_canvas_t *canvas, int x, int y, int w, int h,
+                        gfx_color_t color)
+{
+    if (w < 4 || h < 4) {
+        return;
+    }
+
+    gfx_fill_rect(canvas, x, y, w, 1, color);
+    gfx_fill_rect(canvas, x, y + h - 1, w, 1, color);
+
+    int half = h / 2;
+    for (int r = 0; r < half; r++) {
+        int width = w - 2 - 2 * r;
+        if (width <= 0) {
+            break;
+        }
+        gfx_fill_rect(canvas, x + 1 + r, y + 1 + r, width, 1, color);
+        gfx_fill_rect(canvas, x + 1 + r, y + h - 2 - r, width, 1, color);
+    }
+}
+
+void gfx_draw_battery(gfx_canvas_t *canvas, int x, int y, int percent,
+                      bool charging, gfx_color_t color)
+{
+    const int w = 18;
+    const int h = 9;
+
+    if (percent < 0) {
+        percent = 0;
+    }
+    if (percent > 100) {
+        percent = 100;
+    }
+
+    gfx_draw_rect(canvas, x, y, w, h, color);
+    gfx_fill_rect(canvas, x + w, y + 2, 2, 4, color);
+
+    int inner = w - 4;
+    int fill = inner * percent / 100;
+    if (fill > 0) {
+        gfx_fill_rect(canvas, x + 2, y + 2, fill, h - 4, color);
+    }
+
+    if (charging) {
+        /* Small lightning bolt to the left of the pack. */
+        int bx = x - 7;
+        gfx_fill_rect(canvas, bx + 3, y, 2, 2, color);
+        gfx_fill_rect(canvas, bx + 2, y + 2, 3, 2, color);
+        gfx_fill_rect(canvas, bx + 1, y + 4, 2, 2, color);
+        gfx_fill_rect(canvas, bx + 0, y + 6, 2, 2, color);
+    }
+}
+
+void gfx_draw_checkbox(gfx_canvas_t *canvas, int x, int y, int size, bool checked,
+                       gfx_color_t color)
+{
+    gfx_draw_rect(canvas, x, y, size, size, color);
+    gfx_draw_rect(canvas, x + 1, y + 1, size - 2, size - 2, color);
+
+    if (!checked) {
+        return;
+    }
+
+    int x0 = x + size / 4;
+    int y0 = y + size / 2;
+    int x1 = x + size / 2;
+    int y1 = y + 3 * size / 4;
+    int x2 = x + 3 * size / 4;
+    int y2 = y + size / 4;
+
+    gfx_draw_line(canvas, x0, y0, x1, y1, color);
+    gfx_draw_line(canvas, x1, y1, x2, y2, color);
+    gfx_draw_line(canvas, x0 + 1, y0, x1 + 1, y1, color);
+    gfx_draw_line(canvas, x1, y1 - 1, x2, y2 - 1, color);
 }

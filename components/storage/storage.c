@@ -25,7 +25,7 @@ esp_err_t storage_init(void)
     };
 
     sdmmc_host_t host = SDMMC_HOST_DEFAULT();
-    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    host.max_freq_khz = SDMMC_FREQ_DEFAULT;
 
     sdmmc_slot_config_t slot = SDMMC_SLOT_CONFIG_DEFAULT();
     slot.clk = BOARD_SD_CLK;

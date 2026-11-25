@@ -103,6 +103,14 @@
     .message.bad { color: var(--danger); }
     .message.good { color: var(--ok); }
     .hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .grid { display: grid; grid-template-columns: 118px 1fr; gap: 7px 10px; font-size: 14px; }
+    .grid dt { color: var(--muted); }
+    .grid dd { margin: 0; overflow-wrap: anywhere; }
+    pre.result {
+      margin: 10px 0 0; padding: 12px; max-height: 220px; overflow: auto;
+      border: 1px solid var(--line); border-radius: 10px; background: #faf9f5;
+      font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+    }
     footer { padding: 14px 20px 20px; color: var(--muted); font-size: 12px; text-align: center; }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -113,7 +121,7 @@
       .banner { background: #292923; }
       .banner.ok { background: #173226; }
       .banner.warn { background: #352b16; }
-      .net, input { background: #252520; }
+      .net, input, pre.result { background: #252520; }
       .net:hover, .net:focus-visible { background: #2c2c26; border-color: #555247; }
       .primary { color: #111; }
       .danger { border-color: #5a2c28; }
@@ -133,6 +141,46 @@
     <h2>Connection</h2>
     <div id="current" class="current muted">Loading…</div>
   </section>
+
+  <section>
+    <div class="row">
+      <h2>Device</h2>
+    </div>
+    <dl id="device" class="grid">
+      <dt>Battery</dt><dd id="battery">—</dd>
+      <dt>Storage</dt><dd id="storage">—</dd>
+      <dt>Queue</dt><dd id="queue">—</dd>
+      <dt>Sync</dt><dd id="sync">—</dd>
+      <dt>Next todo</dt><dd id="todo">—</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Last dynamic API call</h2>
+    <div id="lastResult" class="muted">No calls yet.</div>
+    <pre id="resultBody" class="result" hidden></pre>
+  </section>
+
+  <form id="rolodex" autocomplete="off">
+    <h2>Rolodex</h2>
+    <label for="server_url">Server URL
+      <input id="server_url" name="server_url" maxlength="159" placeholder="http://192.168.1.40:4000" required>
+    </label>
+    <label for="standard_key">Standard API key
+      <input id="standard_key" name="standard_key" maxlength="191" placeholder="Leave blank to keep the saved key">
+    </label>
+    <label for="dynamic_slug">Dynamic API name (slug)
+      <input id="dynamic_slug" name="dynamic_slug" maxlength="63" placeholder="test">
+    </label>
+    <label for="dynamic_key">Dynamic API key
+      <input id="dynamic_key" name="dynamic_key" maxlength="191" placeholder="Leave blank to keep the saved key">
+    </label>
+    <label for="state">State sent with each recording
+      <input id="state" name="state" maxlength="255" placeholder="Voice note from dex">
+    </label>
+    <button id="saveSettings" class="primary" type="submit">Save Rolodex settings</button>
+    <p id="settingsMessage" class="message" role="status" aria-live="polite"></p>
+  </form>
 
   <section>
     <div class="row">
@@ -177,9 +225,10 @@
   const passInput = $('password');
   const message = $('message');
   const connectBtn = $('connect');
+  const settingsForm = $('rolodex');
+  const settingsMessage = $('settingsMessage');
   let busy = false;
   let pollTimer = null;
-  let lastStatus = null;
 
   const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -188,6 +237,11 @@
   const setMessage = (text, kind = '') => {
     message.textContent = text;
     message.className = 'message' + (kind ? ' ' + kind : '');
+  };
+
+  const setSettingsMessage = (text, kind = '') => {
+    settingsMessage.textContent = text;
+    settingsMessage.className = 'message' + (kind ? ' ' + kind : '');
   };
 
   const api = async (path, options = {}) => {
@@ -205,8 +259,22 @@
     return data;
   };
 
+  const pretty = (text) => {
+    if (!text) return '';
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch (_) { return text; }
+  };
+
+  const renderBattery = (battery) => {
+    if (!battery || !battery.valid) {
+      return battery && battery.charging ? 'charging (USB)' : 'not available';
+    }
+    const bits = [`${battery.percent}%`, `${(battery.millivolts / 1000).toFixed(2)} V`];
+    if (battery.charging) bits.push('charging');
+    else if (battery.usb_present) bits.push('USB');
+    return bits.join(' · ');
+  };
+
   const renderStatus = (status) => {
-    lastStatus = status;
     $('version').textContent = status.version || 'dev';
 
     if (status.sta_connected) {
@@ -221,13 +289,52 @@
         : `No Wi-Fi configured yet.<br><span class="mono muted">${esc(status.ap_ip)}</span>`;
     } else if (status.has_credentials) {
       banner.className = 'banner warn';
-      banner.textContent = `Saved network ${status.ssid} is not connected. Press PWR on the device to open setup.`;
+      banner.textContent = `Saved network ${status.ssid} is not connected. Double-click PWR on the device to open setup.`;
       current.textContent = 'Disconnected';
     } else {
       banner.className = 'banner warn';
-      banner.textContent = 'No Wi-Fi configured. Press PWR on the device to show the setup QR code.';
+      banner.textContent = 'No Wi-Fi configured. Double-click PWR on the device to show the setup QR code.';
       current.textContent = 'Not configured';
     }
+
+    $('battery').textContent = renderBattery(status.battery);
+    $('storage').textContent = status.sd_mounted ? 'microSD mounted' : 'no microSD (RAM only)';
+    $('queue').textContent = `${status.queue || 0} recording${(status.queue || 0) === 1 ? '' : 's'} waiting`;
+
+    const net = status.net || {};
+    const syncBits = [];
+    syncBits.push(net.busy ? 'hourglass · call pending' : 'idle');
+    if (net.message) syncBits.push(net.message);
+    if (net.error) syncBits.push(net.error);
+    $('sync').textContent = syncBits.join(' · ');
+
+    const todo = net.todo || {};
+    if (todo.valid) {
+      $('todo').textContent = todo.name + (todo.due ? ` (due ${todo.due})` : '');
+    } else if (todo.empty) {
+      $('todo').textContent = 'All clear';
+    } else {
+      $('todo').textContent = net.todo_ready ? 'not loaded yet' : 'todo API not configured';
+    }
+
+    const result = status.result || {};
+    if (!result.present) {
+      $('lastResult').textContent = 'No calls yet.';
+      $('lastResult').className = 'muted';
+      $('resultBody').hidden = true;
+      return;
+    }
+
+    const statusText = result.status || 'unknown';
+    $('lastResult').className = '';
+    $('lastResult').innerHTML =
+      `<strong>${esc(statusText)}</strong>` +
+      (result.request_id ? ` · <span class="mono muted">${esc(result.request_id)}</span>` : '') +
+      (result.error ? `<br><span style="color:var(--danger)">${esc(result.error)}</span>` : '');
+
+    const body = pretty(result.result);
+    $('resultBody').hidden = !body;
+    $('resultBody').textContent = body;
   };
 
   const refreshStatus = async () => {
@@ -237,6 +344,29 @@
     } catch (err) {
       banner.className = 'banner warn';
       banner.textContent = 'Device not reachable. Check that you are still on the dex setup network.';
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      const cfg = await api('/api/settings');
+      $('server_url').value = cfg.server_url || '';
+      $('dynamic_slug').value = cfg.dynamic_slug || '';
+      $('state').value = cfg.state || cfg.default_state || '';
+
+      const std = $('standard_key');
+      std.value = '';
+      std.placeholder = cfg.standard_key_set
+        ? `Saved (${cfg.standard_key_hint}) — leave blank to keep`
+        : 'No standard key saved';
+
+      const dyn = $('dynamic_key');
+      dyn.value = '';
+      dyn.placeholder = cfg.dynamic_key_set
+        ? `Saved (${cfg.dynamic_key_hint}) — leave blank to keep`
+        : 'No dynamic key saved';
+    } catch (err) {
+      setSettingsMessage('Could not load settings: ' + err.message, 'bad');
     }
   };
 
@@ -307,6 +437,37 @@
     $('reveal').textContent = show ? 'Hide' : 'Show';
   });
 
+  settingsForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const button = $('saveSettings');
+    button.disabled = true;
+    button.textContent = 'Saving…';
+    setSettingsMessage('');
+
+    try {
+      await api('/api/settings', {
+        method: 'POST',
+        body: JSON.stringify({
+          server_url: $('server_url').value.trim(),
+          standard_key: $('standard_key').value.trim(),
+          dynamic_slug: $('dynamic_slug').value.trim(),
+          dynamic_key: $('dynamic_key').value.trim(),
+          state: $('state').value.trim(),
+        }),
+      });
+      setSettingsMessage('Saved. Leave key fields blank to keep the existing keys.', 'good');
+      $('standard_key').value = '';
+      $('dynamic_key').value = '';
+      await loadSettings();
+      await refreshStatus();
+    } catch (err) {
+      setSettingsMessage('Could not save: ' + err.message, 'bad');
+    } finally {
+      button.disabled = false;
+      button.textContent = 'Save Rolodex settings';
+    }
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (busy) return;
@@ -360,8 +521,9 @@
 
   $('rescan').addEventListener('click', scan);
 
+  loadSettings();
   refreshStatus().then(scan);
-  pollTimer = setInterval(refreshStatus, 5000);
+  pollTimer = setInterval(refreshStatus, 10000);
   window.addEventListener('beforeunload', () => clearInterval(pollTimer));
 })();
 </script>

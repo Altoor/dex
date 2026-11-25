@@ -202,7 +202,8 @@ static void remove_item(recorder_item_t *item)
     if (found) {
         free_item(item);
     }
-    notify();
+    /* The network worker notifies the UI after it finishes a drain, so no
+     * extra event is needed here. */
 }
 
 recorder_item_t *recorder_peek(void)
@@ -297,7 +298,7 @@ static uint32_t scan_existing(void)
         if (len > 5 && strcmp(name + len - 5, ".part") == 0 &&
             strncmp(name, "rec-", 4) == 0) {
             char stale[RECORDER_PATH_MAX];
-            snprintf(stale, sizeof(stale), "%s/%s", REC_DIR, name);
+            snprintf(stale, sizeof(stale), "%s/%.30s", REC_DIR, name);
             remove(stale);
             continue;
         }
@@ -317,7 +318,7 @@ static uint32_t scan_existing(void)
         }
         if (count < MAX_SCAN_ITEMS) {
             entries[count].seq = seq;
-            snprintf(entries[count].path, sizeof(entries[count].path), "%s/%s",
+            snprintf(entries[count].path, sizeof(entries[count].path), "%s/%.30s",
                      REC_DIR, name);
             count++;
         }
@@ -629,12 +630,20 @@ static esp_err_t codec_init(void)
 static void do_record(void)
 {
     s_session_active = true;
+    s_recording = true;
     s_data_bytes = 0;
 
     if (!s_available) {
         s_session_active = false;
+        s_recording = false;
         notify();
         return;
+    }
+
+    /* If a card was inserted after boot, mount it now so this recording is
+     * durable. Failure just falls back to RAM again. */
+    if (!storage_available()) {
+        storage_init();
     }
 
     capture_t cap;
@@ -643,6 +652,7 @@ static void do_record(void)
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "cannot start capture: %s", esp_err_to_name(err));
         s_session_active = false;
+        s_recording = false;
         notify();
         return;
     }
@@ -660,6 +670,7 @@ static void do_record(void)
         ESP_LOGE(TAG, "codec open failed (%d)", ret);
         capture_finish(&cap, false);
         s_session_active = false;
+        s_recording = false;
         notify();
         return;
     }
@@ -674,11 +685,13 @@ static void do_record(void)
         esp_codec_dev_close(s_codec);
         capture_finish(&cap, false);
         s_session_active = false;
+        s_recording = false;
         notify();
         return;
     }
 
-    s_recording = true;
+    /* Already flagged from recorder_start(); this lets a quick second tap stop
+     * the session even if the codec is still opening. */
     notify();
 
     bool keep = true;
@@ -798,11 +811,18 @@ esp_err_t recorder_start(void)
     }
 
     s_session_active = true;
+    s_recording = true;
+
+    /* Drop stale stop/cancel commands left over from an aborted session. */
+    xQueueReset(s_cmd_queue);
+
     rec_cmd_t cmd = REC_CMD_START;
     if (xQueueSend(s_cmd_queue, &cmd, 0) != pdTRUE) {
         s_session_active = false;
+        s_recording = false;
         return ESP_ERR_TIMEOUT;
     }
+    notify();
     return ESP_OK;
 }
 
