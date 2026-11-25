@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>dex settings</title>
+  <style>
+    :root {
+      --bg: #f4f2ec;
+      --card: #ffffff;
+      --ink: #151515;
+      --muted: #6d6b63;
+      --line: #e4e0d5;
+      --accent: #111111;
+      --ok: #1f6b46;
+      --warn: #8a5a00;
+      --danger: #b3261e;
+      --radius: 16px;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      padding: 22px 14px 40px;
+      background: radial-gradient(1200px 600px at 50% -10%, #fff 0%, var(--bg) 55%);
+      color: var(--ink);
+    }
+    main {
+      width: min(560px, 100%);
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 12px 40px rgba(20, 18, 12, .07);
+      overflow: hidden;
+    }
+    header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+    }
+    .logo { font-weight: 800; letter-spacing: -.04em; font-size: 24px; }
+    .tag { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    section, form { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+    section:last-of-type, form:last-of-type { border-bottom: 0; }
+    h2 { margin: 0 0 12px; font-size: 14px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .row h2 { margin: 0; }
+    .banner {
+      margin: 18px 20px 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: #f0eee7;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .banner.ok { background: #e8f5ee; color: var(--ok); }
+    .banner.warn { background: #fbf2dd; color: var(--warn); }
+    .banner a { color: inherit; font-weight: 650; }
+    .current { font-size: 15px; line-height: 1.5; }
+    .current strong { font-weight: 700; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .networks { display: grid; gap: 8px; max-height: 250px; overflow: auto; padding-right: 2px; }
+    .net {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      width: 100%; padding: 11px 12px; text-align: left;
+      background: #faf9f5; border: 1px solid var(--line); border-radius: 10px;
+      color: var(--ink); font: inherit; cursor: pointer;
+    }
+    .net:hover, .net:focus-visible { border-color: #b9b4a6; background: #f5f3ec; }
+    .net .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .net .meta { flex: 0 0 auto; display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+    .chip { border: 1px solid var(--line); border-radius: 999px; padding: 2px 7px; font-size: 10px; letter-spacing: .04em; }
+    label { display: block; margin: 0 0 12px; font-size: 13px; font-weight: 600; color: #3d3b35; }
+    input {
+      display: block; width: 100%; margin-top: 6px; padding: 12px 12px;
+      border: 1px solid var(--line); border-radius: 10px; background: #fbfaf7;
+      color: var(--ink); font: inherit; font-size: 16px;
+    }
+    input:focus { outline: 2px solid #111; outline-offset: 1px; border-color: #111; }
+    .pass { position: relative; }
+    .pass input { padding-right: 76px; }
+    .pass button {
+      position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+      margin-top: 3px; padding: 7px 9px; background: transparent; border: 0;
+      color: var(--muted); font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+    }
+    button { font: inherit; }
+    .primary, .danger, .ghost {
+      border-radius: 10px; padding: 12px 14px; font-weight: 700; cursor: pointer;
+    }
+    .primary { width: 100%; background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+    .primary:disabled { opacity: .55; cursor: wait; }
+    .ghost { background: transparent; border: 1px solid var(--line); color: var(--ink); padding: 7px 10px; font-size: 12px; }
+    .danger { width: 100%; background: transparent; border: 1px solid #e8c7c4; color: var(--danger); }
+    .message { margin: 12px 0 0; font-size: 14px; line-height: 1.45; min-height: 1.45em; }
+    .message.bad { color: var(--danger); }
+    .message.good { color: var(--ok); }
+    .hint { margin: 10px 0 0; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    footer { padding: 14px 20px 20px; color: var(--muted); font-size: 12px; text-align: center; }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161614; --card: #1e1e1b; --ink: #f2f0e8; --muted: #a5a29a;
+        --line: #33322d; --accent: #f2f0e8;
+      }
+      body { background: radial-gradient(1200px 600px at 50% -10%, #262620 0%, var(--bg) 55%); }
+      .banner { background: #292923; }
+      .banner.ok { background: #173226; }
+      .banner.warn { background: #352b16; }
+      .net, input { background: #252520; }
+      .net:hover, .net:focus-visible { background: #2c2c26; border-color: #555247; }
+      .primary { color: #111; }
+      .danger { border-color: #5a2c28; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="logo">dex</div>
+    <div class="tag">e-paper</div>
+  </header>
+
+  <div id="banner" class="banner">Checking device status…</div>
+
+  <section>
+    <h2>Connection</h2>
+    <div id="current" class="current muted">Loading…</div>
+  </section>
+
+  <section>
+    <div class="row">
+      <h2>Nearby networks</h2>
+      <button id="rescan" class="ghost" type="button">Scan again</button>
+    </div>
+    <div id="networks" class="networks"><div class="muted">Scanning…</div></div>
+    <p class="hint">Select a network to fill in its name, then enter the password.</p>
+  </section>
+
+  <form id="form" autocomplete="off">
+    <h2>Join a network</h2>
+    <label for="ssid">Network name (SSID)
+      <input id="ssid" name="ssid" maxlength="32" placeholder="My Wi-Fi" required>
+    </label>
+    <label for="password">Password
+      <span class="pass">
+        <input id="password" name="password" type="password" maxlength="64" placeholder="Leave empty for open networks">
+        <button id="reveal" type="button">Show</button>
+      </span>
+    </label>
+    <button id="connect" class="primary" type="submit">Connect</button>
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+  </form>
+
+  <section>
+    <button id="forget" class="danger" type="button">Forget saved network</button>
+    <p class="hint">The device will reboot into setup mode if you forget the network.</p>
+  </section>
+
+  <footer>dex firmware · <span id="version">—</span></footer>
+</main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const banner = $('banner');
+  const current = $('current');
+  const networks = $('networks');
+  const form = $('form');
+  const ssidInput = $('ssid');
+  const passInput = $('password');
+  const message = $('message');
+  const connectBtn = $('connect');
+  let busy = false;
+  let pollTimer = null;
+  let lastStatus = null;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+
+  const setMessage = (text, kind = '') => {
+    message.textContent = text;
+    message.className = 'message' + (kind ? ' ' + kind : '');
+  };
+
+  const api = async (path, options = {}) => {
+    const res = await fetch(path, {
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      ...options,
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch (_) { /* ignore */ }
+    if (!res.ok) {
+      throw new Error((data && data.error) || text || `HTTP ${res.status}`);
+    }
+    return data;
+  };
+
+  const renderStatus = (status) => {
+    lastStatus = status;
+    $('version').textContent = status.version || 'dev';
+
+    if (status.sta_connected) {
+      banner.className = 'banner ok';
+      banner.textContent = `Connected to ${status.ssid}. This device is online.`;
+      current.innerHTML = `<strong>${esc(status.ssid)}</strong><br><span class="mono muted">${esc(status.ip)}</span>`;
+    } else if (status.ap_active) {
+      banner.className = 'banner warn';
+      banner.innerHTML = `Setup mode. Join the open Wi-Fi network <strong>${esc(status.ap_ssid)}</strong>, then use this page to pick your home network.`;
+      current.innerHTML = status.has_credentials
+        ? `Saved network <strong>${esc(status.ssid)}</strong> is not connected.<br><span class="mono muted">${esc(status.ap_ip)}</span>`
+        : `No Wi-Fi configured yet.<br><span class="mono muted">${esc(status.ap_ip)}</span>`;
+    } else if (status.has_credentials) {
+      banner.className = 'banner warn';
+      banner.textContent = `Saved network ${status.ssid} is not connected. Press PWR on the device to open setup.`;
+      current.textContent = 'Disconnected';
+    } else {
+      banner.className = 'banner warn';
+      banner.textContent = 'No Wi-Fi configured. Press PWR on the device to show the setup QR code.';
+      current.textContent = 'Not configured';
+    }
+  };
+
+  const refreshStatus = async () => {
+    if (busy) return;
+    try {
+      renderStatus(await api('/api/status'));
+    } catch (err) {
+      banner.className = 'banner warn';
+      banner.textContent = 'Device not reachable. Check that you are still on the dex setup network.';
+    }
+  };
+
+  const signalLabel = (rssi) => {
+    if (rssi >= -55) return 'strong';
+    if (rssi >= -70) return 'good';
+    if (rssi >= -82) return 'fair';
+    return 'weak';
+  };
+
+  const renderNetworks = (list) => {
+    const seen = new Set();
+    const clean = [...list]
+      .sort((a, b) => b.rssi - a.rssi)
+      .filter((n) => {
+        if (!n.ssid || seen.has(n.ssid)) return false;
+        seen.add(n.ssid);
+        return true;
+      });
+
+    if (!clean.length) {
+      networks.innerHTML = '<div class="muted">No networks found. You can type a hidden SSID below.</div>';
+      return;
+    }
+
+    networks.innerHTML = clean.map((n) => `
+      <button class="net" type="button" data-ssid="${esc(n.ssid)}" data-secure="${n.secure ? '1' : '0'}">
+        <span class="name">${esc(n.ssid)}</span>
+        <span class="meta">
+          <span>${signalLabel(n.rssi)}</span>
+          ${n.secure ? '<span class="chip">LOCK</span>' : '<span class="chip">OPEN</span>'}
+        </span>
+      </button>
+    `).join('');
+
+    networks.querySelectorAll('.net').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        ssidInput.value = btn.dataset.ssid;
+        passInput.value = '';
+        if (btn.dataset.secure === '1') {
+          passInput.focus();
+        } else {
+          passInput.placeholder = 'Open network — no password needed';
+          connectBtn.focus();
+        }
+        setMessage('');
+      });
+    });
+  };
+
+  const scan = async () => {
+    const button = $('rescan');
+    button.disabled = true;
+    networks.innerHTML = '<div class="muted">Scanning…</div>';
+    try {
+      const data = await api('/api/scan');
+      renderNetworks(data.networks || []);
+    } catch (err) {
+      networks.innerHTML = `<div class="muted">Scan failed: ${esc(err.message)}</div>`;
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  $('reveal').addEventListener('click', () => {
+    const show = passInput.type === 'password';
+    passInput.type = show ? 'text' : 'password';
+    $('reveal').textContent = show ? 'Hide' : 'Show';
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (busy) return;
+
+    const ssid = ssidInput.value.trim();
+    const password = passInput.value;
+    if (!ssid) {
+      setMessage('Enter a network name.', 'bad');
+      return;
+    }
+
+    busy = true;
+    connectBtn.disabled = true;
+    connectBtn.textContent = 'Saving…';
+    setMessage('Saving credentials…');
+
+    try {
+      await api('/api/wifi', {
+        method: 'POST',
+        body: JSON.stringify({ ssid, password }),
+      });
+      setMessage('Saved. The device is restarting and will join your network.', 'good');
+      banner.className = 'banner ok';
+      banner.textContent = 'Credentials saved. You can close this page.';
+      connectBtn.textContent = 'Saved';
+    } catch (err) {
+      busy = false;
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Connect';
+      setMessage('Could not save: ' + err.message, 'bad');
+    }
+  });
+
+  $('forget').addEventListener('click', async () => {
+    if (busy) return;
+    if (!confirm('Forget the saved Wi-Fi network and reboot into setup mode?')) return;
+
+    busy = true;
+    $('forget').disabled = true;
+    try {
+      await api('/api/reset', { method: 'POST', body: '{}' });
+      setMessage('Network forgotten. The device is restarting.', 'good');
+      banner.className = 'banner warn';
+      banner.textContent = 'Device restarting into setup mode.';
+    } catch (err) {
+      busy = false;
+      $('forget').disabled = false;
+      setMessage('Could not reset: ' + err.message, 'bad');
+    }
+  });
+
+  $('rescan').addEventListener('click', scan);
+
+  refreshStatus().then(scan);
+  pollTimer = setInterval(refreshStatus, 5000);
+  window.addEventListener('beforeunload', () => clearInterval(pollTimer));
+})();
+</script>
+</body>
+</html>
